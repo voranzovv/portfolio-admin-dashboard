@@ -1,0 +1,16 @@
+include header  
+
+h1 Add Skill
+
+form(action="/api/skills", method="POST")
+
+    .form-group
+        label(for="name") Skill Name
+        input#name(type="text", name="name", placeholder="Enter skill name", required)
+
+    .form-group
+        label(for="description") Description
+        textarea#description(name="description", rows="5", placeholder="Enter skill description", required)
+
+    button.btn(type="submit") Add Skill 
+    

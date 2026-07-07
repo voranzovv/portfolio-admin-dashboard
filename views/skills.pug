@@ -1,0 +1,19 @@
+include header
+h1 Welcome to My Portfolio
+
+p Here are some of my skills
+
+a.btn.btn-primary(href="/addSkill") Add New Skill
+
+each skill in skills
+    div.container
+        h2= skill.name
+        p= skill.description
+
+        form(action=`/api/skills/${skill._id}/delete` method="POST")
+            button.btn.btn-danger(type="submit") Delete
+
+        
+
+div.api-container
+    a(href="/api/skills") View Skill List API

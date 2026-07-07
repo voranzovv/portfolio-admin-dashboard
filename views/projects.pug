@@ -1,0 +1,33 @@
+include header
+
+div.container
+  h1 My Projects
+
+  p Here are some of my projects
+
+  a.btn.btn-primary(href="/addProject") Add New Project
+
+  br
+  br
+
+  each project in projects
+    div.sub-container
+      h2= project.title
+      p= project.description
+      p
+        strong Technologies:
+        |  #{project.technologies}
+
+      a.btn(href=project.liveLink) View Live Demo
+      | 
+      a.btn(href=project.githubLink) View Code on GitHub
+
+      br
+      br
+
+      form(action=`/api/projects/${project._id}/delete` method="POST")
+        button.btn.btn-danger(type="submit") Delete
+
+      hr
+
+  a(href="/api/projects") View Project List API

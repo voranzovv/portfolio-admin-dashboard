@@ -1,0 +1,28 @@
+include header
+
+.container
+    h1 Add Project
+
+    form(action="/api/projects", method="POST")
+
+        .form-group
+            label(for="title") Project Title
+            input#title(type="text", name="title", placeholder="Enter project title", required)
+
+        .form-group
+            label(for="description") Description
+            textarea#description(name="description", rows="5", placeholder="Enter project description", required)
+
+        .form-group
+            label(for="technologies") Technologies
+            input#technologies(type="text", name="technologies", placeholder="HTML, CSS, JavaScript, Node.js", required)
+
+        .form-group
+            label(for="githubLink") GitHub Link
+            input#githubLink(type="url", name="githubLink", placeholder="https://github.com/username/project", required)
+
+        .form-group
+            label(for="liveLink") Live Demo Link
+            input#liveLink(type="url", name="liveLink", placeholder="https://yourproject.com")
+
+        button.btn(type="submit") Add Project
