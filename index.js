@@ -1,6 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import cors from "cors";
 
 import Project from "./models/Project.js";
 import Skill from "./models/Skills.js";
@@ -10,22 +11,38 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-//db connection
+// ==========================================
+// Middleware Setup
+// ==========================================
 
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+// Enable CORS so your React frontend
+app.use(cors());
 
-//middleware
+// Parse JSON request bodies (essential for React API calls)
+app.use(express.json());
 
+// Parse URL-encoded request bodies (for traditional HTML form submits)
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static assets from public folder
+app.use(express.static("public"));
+
+// Configure Pug template engine (retained from Assignment 1)
 app.set("view engine", "pug");
 app.set("views", "./views");
 
-app.use(express.static("public"));
-app.use(express.urlencoded({ extended: true }));
+// ==========================================
+// Database Connection
+// ==========================================
 
-//page routes
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("Connected to MongoDB successfully"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+// ==========================================
+// Server-Rendered Page Routes (Pug Views)
+// ==========================================
 
 // Home Page
 app.get("/", async (req, res) => {
@@ -36,10 +53,7 @@ app.get("/", async (req, res) => {
 app.get("/projects", async (req, res) => {
   try {
     const projects = await Project.find();
-
-    res.render("projects", {
-      projects,
-    });
+    res.render("projects", { projects });
   } catch (err) {
     console.error(err);
     res.status(500).send("Server Error");
@@ -50,22 +64,19 @@ app.get("/projects", async (req, res) => {
 app.get("/skills", async (req, res) => {
   try {
     const skills = await Skill.find();
-
-    res.render("skills", {
-      skills,
-    });
+    res.render("skills", { skills });
   } catch (err) {
     console.error(err);
     res.status(500).send("Server Error");
   }
 });
 
-// Add Project Page
+// Add Project Page Form
 app.get("/addProject", (req, res) => {
   res.render("addProject");
 });
 
-// Add Skill Page
+// Add Skill Page Form
 app.get("/addSkill", (req, res) => {
   res.render("addSkill");
 });
@@ -75,114 +86,130 @@ app.get("/contact", (req, res) => {
   res.render("contact");
 });
 
-//API routes
+// ==========================================
+// REST API Routes (Consumed by React Front-End)
+// ==========================================
 
-// Get all projects
+// GET: Fetch all projects
 app.get("/api/projects", async (req, res) => {
   try {
     const projects = await Project.find();
-
     res.json(projects);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    console.error("Error fetching projects:", err);
+    res.status(500).json({ error: "Failed to retrieve projects" });
   }
 });
 
-// Get single project
+// GET: Fetch single project by ID
 app.get("/api/projects/:id", async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
-
     if (!project) {
-      return res.status(404).send("Project not found");
+      return res.status(404).json({ error: "Project not found" });
     }
-
     res.json(project);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    console.error("Error fetching project:", err);
+    res.status(500).json({ error: "Failed to retrieve project" });
   }
 });
 
-// Create project
+// POST: Create project (Supports both React JSON payloads & HTML Form posts)
 app.post("/api/projects", async (req, res) => {
   try {
-    await Project.create(req.body);
+    const newProject = await Project.create(req.body);
 
+    // If request comes from React (JSON content-type), return JSON response
+    if (req.is("json")) {
+      return res.status(201).json(newProject);
+    }
+
+    // Default redirect for classic HTML form submission
     res.redirect("/projects");
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error creating project");
+    console.error("Error creating project:", err);
+    res.status(500).json({ error: "Failed to create project" });
   }
 });
 
-// Delete project
+// DELETE/POST: Delete project
 app.post("/api/projects/:id/delete", async (req, res) => {
   try {
     await Project.findByIdAndDelete(req.params.id);
 
+    if (req.is("json")) {
+      return res.status(200).json({ message: "Project deleted successfully" });
+    }
+
     res.redirect("/projects");
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error deleting project");
+    console.error("Error deleting project:", err);
+    res.status(500).json({ error: "Failed to delete project" });
   }
 });
 
-// Get all skills
+// GET: Fetch all skills
 app.get("/api/skills", async (req, res) => {
   try {
     const skills = await Skill.find();
-
     res.json(skills);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    console.error("Error fetching skills:", err);
+    res.status(500).json({ error: "Failed to retrieve skills" });
   }
 });
 
-// Get single skill
+// GET: Fetch single skill by ID
 app.get("/api/skills/:id", async (req, res) => {
   try {
     const skill = await Skill.findById(req.params.id);
-
     if (!skill) {
-      return res.status(404).send("Skill not found");
+      return res.status(404).json({ error: "Skill not found" });
     }
-
     res.json(skill);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    console.error("Error fetching skill:", err);
+    res.status(500).json({ error: "Failed to retrieve skill" });
   }
 });
 
-// Create skill
+// POST: Create skill (Supports both React JSON payloads & HTML Form posts)
 app.post("/api/skills", async (req, res) => {
   try {
-    await Skill.create(req.body);
+    const newSkill = await Skill.create(req.body);
+
+    if (req.is("json")) {
+      return res.status(201).json(newSkill);
+    }
 
     res.redirect("/skills");
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error creating skill");
+    console.error("Error creating skill:", err);
+    res.status(500).json({ error: "Failed to create skill" });
   }
 });
 
-// Delete skill
+// DELETE/POST: Delete skill
 app.post("/api/skills/:id/delete", async (req, res) => {
   try {
     await Skill.findByIdAndDelete(req.params.id);
 
+    if (req.is("json")) {
+      return res.status(200).json({ message: "Skill deleted successfully" });
+    }
+
     res.redirect("/skills");
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error deleting skill");
+    console.error("Error deleting skill:", err);
+    res.status(500).json({ error: "Failed to delete skill" });
   }
 });
 
-//start server
+// ==========================================
+// Start Server
+// ==========================================
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  console.log(`Server listening at http://localhost:${port}`);
 });
