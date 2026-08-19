@@ -12,22 +12,37 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // ==========================================
-// Middleware Setup
+// 1. Enhanced Middleware Configuration
 // ==========================================
 
-// Enable CORS so your React frontend
-app.use(cors());
+// Configure CORS for local development and deployed frontend
+const allowedOrigins = [
+  "http://localhost:5173", // Local Vite React Dev Server
+  "http://localhost:3000",
+  process.env.CLIENT_URL, // Your live Vercel URL (add to .env later)
+].filter(Boolean);
 
-// Parse JSON request bodies (essential for React API calls)
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        process.env.NODE_ENV !== "production"
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS policy violation: Origin not allowed"));
+    },
+    credentials: true,
+  }),
+);
+
 app.use(express.json());
-
-// Parse URL-encoded request bodies (for traditional HTML form submits)
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static assets from public folder
 app.use(express.static("public"));
 
-// Configure Pug template engine (retained from Assignment 1)
 app.set("view engine", "pug");
 app.set("views", "./views");
 
@@ -38,172 +53,184 @@ app.set("views", "./views");
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log("Connected to MongoDB successfully"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+    process.exit(1);
+  });
 
 // ==========================================
-// Server-Rendered Page Routes (Pug Views)
+// Pug Views (Assignment 1 Admin Pages)
 // ==========================================
 
-// Home Page
-app.get("/", async (req, res) => {
-  res.render("index");
-});
+app.get("/", (req, res) => res.render("index"));
 
-// Projects Page
-app.get("/projects", async (req, res) => {
+app.get("/projects", async (req, res, next) => {
   try {
     const projects = await Project.find();
     res.render("projects", { projects });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// Skills Page
-app.get("/skills", async (req, res) => {
+app.get("/skills", async (req, res, next) => {
   try {
     const skills = await Skill.find();
     res.render("skills", { skills });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// Add Project Page Form
-app.get("/addProject", (req, res) => {
-  res.render("addProject");
-});
-
-// Add Skill Page Form
-app.get("/addSkill", (req, res) => {
-  res.render("addSkill");
-});
-
-// Contact Page
-app.get("/contact", (req, res) => {
-  res.render("contact");
-});
+app.get("/addProject", (req, res) => res.render("addProject"));
+app.get("/addSkill", (req, res) => res.render("addSkill"));
+app.get("/contact", (req, res) => res.render("contact"));
 
 // ==========================================
-// REST API Routes (Consumed by React Front-End)
+// REST API Routes (Assignment 2 React Frontend)
 // ==========================================
+
+// --- PROJECTS ENDPOINTS ---
 
 // GET: Fetch all projects
-app.get("/api/projects", async (req, res) => {
+app.get("/api/projects", async (req, res, next) => {
   try {
-    const projects = await Project.find();
+    const projects = await Project.find().sort({ createdAt: -1 });
     res.json(projects);
   } catch (err) {
-    console.error("Error fetching projects:", err);
-    res.status(500).json({ error: "Failed to retrieve projects" });
+    next(err);
   }
 });
 
 // GET: Fetch single project by ID
-app.get("/api/projects/:id", async (req, res) => {
+app.get("/api/projects/:id", async (req, res, next) => {
   try {
-    const project = await Project.findById(req.params.id);
-    if (!project) {
-      return res.status(404).json({ error: "Project not found" });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid Project ID format" });
     }
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ error: "Project not found" });
     res.json(project);
   } catch (err) {
-    console.error("Error fetching project:", err);
-    res.status(500).json({ error: "Failed to retrieve project" });
+    next(err);
   }
 });
 
-// POST: Create project (Supports both React JSON payloads & HTML Form posts)
-app.post("/api/projects", async (req, res) => {
+// POST: Create project
+app.post("/api/projects", async (req, res, next) => {
   try {
     const newProject = await Project.create(req.body);
-
-    // If request comes from React (JSON content-type), return JSON response
-    if (req.is("json")) {
+    if (req.is("json") || req.headers["accept"]?.includes("application/json")) {
       return res.status(201).json(newProject);
     }
-
-    // Default redirect for classic HTML form submission
     res.redirect("/projects");
   } catch (err) {
-    console.error("Error creating project:", err);
-    res.status(500).json({ error: "Failed to create project" });
+    next(err);
   }
 });
 
-// DELETE/POST: Delete project
-app.post("/api/projects/:id/delete", async (req, res) => {
+// DELETE / POST: Delete project (Handles both REST API calls & Pug Form Submissions)
+const deleteProjectHandler = async (req, res, next) => {
   try {
-    await Project.findByIdAndDelete(req.params.id);
-
-    if (req.is("json")) {
-      return res.status(200).json({ message: "Project deleted successfully" });
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid Project ID format" });
     }
+    const deleted = await Project.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: "Project not found" });
 
+    if (req.is("json") || req.headers["accept"]?.includes("application/json")) {
+      return res
+        .status(200)
+        .json({ message: "Project deleted successfully", id });
+    }
     res.redirect("/projects");
   } catch (err) {
-    console.error("Error deleting project:", err);
-    res.status(500).json({ error: "Failed to delete project" });
+    next(err);
   }
-});
+};
+
+app.delete("/api/projects/:id", deleteProjectHandler);
+app.post("/api/projects/:id/delete", deleteProjectHandler);
+
+// --- SKILLS ENDPOINTS ---
 
 // GET: Fetch all skills
-app.get("/api/skills", async (req, res) => {
+app.get("/api/skills", async (req, res, next) => {
   try {
     const skills = await Skill.find();
     res.json(skills);
   } catch (err) {
-    console.error("Error fetching skills:", err);
-    res.status(500).json({ error: "Failed to retrieve skills" });
+    next(err);
   }
 });
 
 // GET: Fetch single skill by ID
-app.get("/api/skills/:id", async (req, res) => {
+app.get("/api/skills/:id", async (req, res, next) => {
   try {
-    const skill = await Skill.findById(req.params.id);
-    if (!skill) {
-      return res.status(404).json({ error: "Skill not found" });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid Skill ID format" });
     }
+    const skill = await Skill.findById(req.params.id);
+    if (!skill) return res.status(404).json({ error: "Skill not found" });
     res.json(skill);
   } catch (err) {
-    console.error("Error fetching skill:", err);
-    res.status(500).json({ error: "Failed to retrieve skill" });
+    next(err);
   }
 });
 
-// POST: Create skill (Supports both React JSON payloads & HTML Form posts)
-app.post("/api/skills", async (req, res) => {
+// POST: Create skill
+app.post("/api/skills", async (req, res, next) => {
   try {
     const newSkill = await Skill.create(req.body);
-
-    if (req.is("json")) {
+    if (req.is("json") || req.headers["accept"]?.includes("application/json")) {
       return res.status(201).json(newSkill);
     }
-
     res.redirect("/skills");
   } catch (err) {
-    console.error("Error creating skill:", err);
-    res.status(500).json({ error: "Failed to create skill" });
+    next(err);
   }
 });
 
-// DELETE/POST: Delete skill
-app.post("/api/skills/:id/delete", async (req, res) => {
+// DELETE / POST: Delete skill
+const deleteSkillHandler = async (req, res, next) => {
   try {
-    await Skill.findByIdAndDelete(req.params.id);
-
-    if (req.is("json")) {
-      return res.status(200).json({ message: "Skill deleted successfully" });
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid Skill ID format" });
     }
+    const deleted = await Skill.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: "Skill not found" });
 
+    if (req.is("json") || req.headers["accept"]?.includes("application/json")) {
+      return res
+        .status(200)
+        .json({ message: "Skill deleted successfully", id });
+    }
     res.redirect("/skills");
   } catch (err) {
-    console.error("Error deleting skill:", err);
-    res.status(500).json({ error: "Failed to delete skill" });
+    next(err);
   }
+};
+
+app.delete("/api/skills/:id", deleteSkillHandler);
+app.post("/api/skills/:id/delete", deleteSkillHandler);
+
+// ==========================================
+// 2. Global Error Handling Middleware
+// ==========================================
+
+// Handle 404 for undefined routes
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// Centralized Error Handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled Error:", err.stack);
+  res.status(err.status || 500).json({
+    error: err.message || "Internal Server Error",
+  });
 });
 
 // ==========================================
@@ -211,5 +238,7 @@ app.post("/api/skills/:id/delete", async (req, res) => {
 // ==========================================
 
 app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+  console.log(
+    `Server running in ${process.env.NODE_ENV || "development"} mode on port ${port}`,
+  );
 });
