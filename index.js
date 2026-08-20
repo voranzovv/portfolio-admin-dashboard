@@ -19,6 +19,7 @@ const port = process.env.PORT || 3000;
 const allowedOrigins = [
   "http://localhost:5173", // Local Vite React Dev Server
   "http://localhost:3000",
+  "https://devportfoliovoran.netlify.app",
   process.env.CLIENT_URL, // Your live Vercel URL (add to .env later)
 ].filter(Boolean);
 
